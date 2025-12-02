@@ -1,0 +1,11 @@
+
+services:
+  baileys-bot:
+    build: .
+    container_name: baileys-bot
+    restart: always
+    volumes:
+      - ./session:/usr/src/app/session
+      - ./uploads:/usr/src/app/uploads
+    ports:
+      - "3000:3000"
