@@ -1,11 +1,48 @@
-
 services:
   baileys-bot:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
     container_name: baileys-bot
-    restart: always
+    restart: unless-stopped
+    
+    # Variables de entorno
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - TZ=America/Lima
+    
+    # Volúmenes persistentes
     volumes:
       - ./session:/usr/src/app/session
       - ./uploads:/usr/src/app/uploads
+      - ./public:/usr/src/app/public
+    
+    # Mapeo de puertos
     ports:
       - "3000:3000"
+    
+    # Límites de recursos (opcional)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '1'
+    #       memory: 512M
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 256M
+    
+    # Logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Healthcheck
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/status', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

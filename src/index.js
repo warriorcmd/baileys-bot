@@ -1,8 +1,10 @@
 import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion } from "@whiskeysockets/baileys";
 import express from "express";
 import multer from "multer";
+import fileUpload from "express-fileupload";
 import fs from "fs";
 import QRCode from "qrcode";
+import { setSocket, sendNormalMessage, sendMedia, sendToGroup, getChats, showChats, sendFileToChat, sendToChat } from "./controllers/messageController.js";
 
 const upload = multer({ dest: "uploads/" });
 const app = express();
@@ -14,6 +16,8 @@ let connectionStatus = "disconnected";
 let botInfo = { phoneNumber: null, startTime: new Date() };
 let messageStats = { sent: 0, received: 0 };
 
+// Middleware para manejar archivos (express-fileupload)
+app.use(fileUpload());
 app.use(express.json());
 app.use(express.static("public"));
 
@@ -183,7 +187,7 @@ ${!isAuthenticated ? `
 </div>
 </div>
 <div class="btn-group">
-<button class="btn" onclick="location.reload()">🔄 Actualizar código</button>
+<button class="btn" onclick="actualizarQR()">🔄 Actualizar código</button>
 </div>
 </div>
 ` : `
@@ -280,6 +284,24 @@ const d=await r.json();
 if(d.authenticated!==${isAuthenticated})location.reload();
 }catch(e){}
 },5000);
+// Función para actualizar QR (borra sesión)
+async function actualizarQR(){
+if(confirm('¿Deseas generar un nuevo código QR? Esto borrará la sesión actual si existe.')){
+try{
+const r=await fetch('/logout',{method:'POST'});
+const d=await r.json();
+if(d.success){
+setTimeout(()=>location.reload(),1000);
+}else{
+alert('❌ Error: '+d.error);
+location.reload();
+}
+}catch(e){
+console.error('Error:',e);
+location.reload();
+}
+}
+}
 // Función para cerrar sesión
 async function cerrarSesion(){
 if(confirm('¿Estás seguro de que deseas cerrar la sesión? Deberás escanear el QR nuevamente.')){
@@ -429,10 +451,21 @@ app.post("/logout", async (req, res) => {
     try {
         console.log("🔐 Cerrando sesión...");
         
+        // Resetear variables primero
+        isAuthenticated = false;
+        qrCode = null;
+        connectionStatus = "disconnected";
+        botInfo.phoneNumber = null;
+        
         // Cerrar socket si está conectado
         if (sock) {
-            await sock.logout();
+            try {
+                await sock.logout();
+            } catch (err) {
+                console.log("⚠️  Socket ya cerrado o error al logout:", err.message);
+            }
             sock = null;
+            setSocket(null);
         }
         
         // Eliminar archivos de sesión
@@ -443,24 +476,24 @@ app.post("/logout", async (req, res) => {
                 const filePath = `${sessionPath}/${file}`;
                 try {
                     fs.unlinkSync(filePath);
+                    console.log(`🗑️  Eliminado: ${file}`);
                 } catch (err) {
-                    console.error(`Error al eliminar ${file}:`, err);
+                    console.error(`❌ Error al eliminar ${file}:`, err.message);
                 }
             });
         }
         
-        // Resetear variables
-        isAuthenticated = false;
-        qrCode = null;
-        connectionStatus = "disconnected";
-        botInfo.phoneNumber = null;
-        
         console.log("✅ Sesión cerrada exitosamente");
         
-        // Reiniciar bot después de 2 segundos
-        setTimeout(() => startBot(), 2000);
-        
+        // Responder inmediatamente
         res.json({ success: true, message: "Sesión cerrada correctamente" });
+        
+        // Reiniciar bot después de 2 segundos
+        setTimeout(() => {
+            console.log("🔄 Reiniciando bot...");
+            startBot();
+        }, 2000);
+        
     } catch (error) {
         console.error("❌ Error al cerrar sesión:", error);
         res.status(500).json({ success: false, error: error.message });
@@ -590,6 +623,10 @@ async function startBot() {
                 isAuthenticated = true;
                 qrCode = null;
                 if (sock.user) botInfo.phoneNumber = sock.user.id.split(":")[0];
+                
+                // Actualizar socket en el controlador
+                setSocket(sock);
+                
                 console.log("");
                 console.log("╔════════════════════════════════════════╗");
                 console.log("║  ✅ BOT CONECTADO EXITOSAMENTE        ║");
@@ -633,6 +670,31 @@ async function startBot() {
         setTimeout(() => startBot(), 5000);
     }
 }
+
+// ============================================================
+// NUEVAS RUTAS API - CONTROLADORES
+// ============================================================
+
+// Enviar mensaje normal (texto)
+app.post("/api/send-message", sendNormalMessage);
+
+// Enviar archivo/media
+app.post("/api/send-media", sendMedia);
+
+// Enviar mensaje a grupo por JID
+app.post("/api/send-group", sendToGroup);
+
+// Obtener lista de chats
+app.get("/api/chats", getChats);
+
+// Mostrar chats con nombres
+app.get("/api/show-chats", showChats);
+
+// Enviar archivo a chat por nombre
+app.post("/api/send-file-chat", sendFileToChat);
+
+// Enviar mensaje a chat por nombre
+app.post("/api/send-to-chat", sendToChat);
 
 // ============================================================
 // INICIAR SERVIDOR
