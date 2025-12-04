@@ -676,10 +676,10 @@ async function startBot() {
 // ============================================================
 
 // Enviar mensaje normal (texto)
-app.post("/api/send-message", sendNormalMessage);
+app.post("/api/send-messages", sendNormalMessage);
 
 // Enviar archivo/media
-app.post("/api/send-media", sendMedia);
+app.post("/api/send-medias", sendMedia);
 
 // Enviar mensaje a grupo por JID
 app.post("/api/send-group", sendToGroup);
