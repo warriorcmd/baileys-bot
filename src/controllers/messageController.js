@@ -1,5 +1,6 @@
 import fs from "fs";
 import { phoneNumberFormatter } from "../helpers/formatter.js";
+import messageQueue from "../helpers/messageQueue.js";
 
 // Referencia al socket de Baileys (debe ser importado desde donde lo inicializas)
 let sock = null;
@@ -39,7 +40,7 @@ export const getChats = async (req, res) => {
 };
 
 // ============================================================
-// ENVIAR MENSAJE NORMAL (TEXTO)
+// ENVIAR MENSAJE NORMAL (TEXTO) - CON COLA
 // ============================================================
 export const sendNormalMessage = async (req, res) => {
     try {
@@ -59,22 +60,21 @@ export const sendNormalMessage = async (req, res) => {
             });
         }
 
-        // Formatear número al formato JID de WhatsApp
-        const jid = number.includes("@") ? number : `${number}@c.us`;
+        // Agregar mensaje a la cola en lugar de enviar directamente
+        const result = await messageQueue.addToQueue({
+            type: 'text',
+            sock: sock,
+            number: number,
+            message: message
+        });
 
-        // Enviar mensaje de texto
-        const response = await sock.sendMessage(jid, { text: message });
-
-        console.log(`✅ Mensaje enviado a ${number}`);
+        console.log(`✅ Mensaje agregado a la cola para ${number}`);
 
         return res.status(200).json({
             status: true,
-            response: response,
-            data: {
-                number,
-                messageLength: message.length,
-                timestamp: new Date().toISOString()
-            }
+            message: "Mensaje agregado a la cola de envío",
+            response: result,
+            queueInfo: messageQueue.getQueueInfo()
         });
 
     } catch (error) {
@@ -88,7 +88,7 @@ export const sendNormalMessage = async (req, res) => {
 };
 
 // ============================================================
-// ENVIAR ARCHIVO/MEDIA
+// ENVIAR ARCHIVO/MEDIA - CON COLA
 // ============================================================
 export const sendMedia = async (req, res) => {
     try {
@@ -109,61 +109,22 @@ export const sendMedia = async (req, res) => {
             });
         }
 
-        // Formatear número al formato JID
-        const jid = number.includes("@") ? number : `${number}@c.us`;
+        // Agregar mensaje con archivo a la cola
+        const result = await messageQueue.addToQueue({
+            type: 'media',
+            sock: sock,
+            number: number,
+            file: file,
+            caption: caption || ""
+        });
 
-        // Obtener extensión del archivo
-        const fileExtension = file.name.split(".").pop().toLowerCase();
-        const mimeType = file.mimetype;
-
-        // Preparar el mensaje según el tipo de archivo
-        let messageContent = {};
-
-        if (mimeType.startsWith("image/")) {
-            // Enviar como imagen
-            messageContent = {
-                image: file.data,
-                caption: caption || "",
-                mimetype: mimeType
-            };
-        } else if (mimeType.startsWith("video/")) {
-            // Enviar como video
-            messageContent = {
-                video: file.data,
-                caption: caption || "",
-                mimetype: mimeType
-            };
-        } else if (mimeType.startsWith("audio/")) {
-            // Enviar como audio
-            messageContent = {
-                audio: file.data,
-                mimetype: mimeType
-            };
-        } else {
-            // Enviar como documento (PDF, Word, Excel, etc.)
-            messageContent = {
-                document: file.data,
-                mimetype: mimeType,
-                fileName: file.name,
-                caption: caption || ""
-            };
-        }
-
-        // Enviar el archivo
-        const response = await sock.sendMessage(jid, messageContent);
-
-        console.log(`✅ Archivo enviado a ${number}: ${file.name}`);
+        console.log(`✅ Archivo agregado a la cola para ${number}: ${file.name}`);
 
         return res.status(200).json({
             status: true,
-            response: response,
-            data: {
-                number,
-                fileName: file.name,
-                fileSize: file.size,
-                fileType: mimeType,
-                timestamp: new Date().toISOString()
-            }
+            message: "Archivo agregado a la cola de envío",
+            response: result,
+            queueInfo: messageQueue.getQueueInfo()
         });
 
     } catch (error) {
@@ -282,7 +243,7 @@ export const sendToChat = async (req, res) => {
 };
 
 // ============================================================
-// ENVIAR MENSAJE A GRUPO POR JID DIRECTO
+// ENVIAR MENSAJE A GRUPO POR JID DIRECTO - CON COLA
 // ============================================================
 export const sendToGroup = async (req, res) => {
     try {
@@ -302,22 +263,21 @@ export const sendToGroup = async (req, res) => {
             });
         }
 
-        // Asegurar que el JID tenga el formato correcto para grupos
-        const jid = groupJid.includes("@") ? groupJid : `${groupJid}@g.us`;
+        // Agregar mensaje de grupo a la cola
+        const result = await messageQueue.addToQueue({
+            type: 'group',
+            sock: sock,
+            groupJid: groupJid,
+            message: message
+        });
 
-        // Enviar mensaje al grupo
-        const response = await sock.sendMessage(jid, { text: message });
-
-        console.log(`✅ Mensaje enviado al grupo ${groupJid}`);
+        console.log(`✅ Mensaje agregado a la cola para grupo ${groupJid}`);
 
         return res.status(200).json({
             status: true,
-            response: response,
-            data: {
-                groupJid: jid,
-                messageLength: message.length,
-                timestamp: new Date().toISOString()
-            }
+            message: "Mensaje agregado a la cola de envío",
+            response: result,
+            queueInfo: messageQueue.getQueueInfo()
         });
 
     } catch (error) {
@@ -326,6 +286,86 @@ export const sendToGroup = async (req, res) => {
             status: false,
             message: error.message,
             response: error
+        });
+    }
+};
+
+// ============================================================
+// GESTIÓN DE COLA - NUEVAS FUNCIONES
+// ============================================================
+
+/**
+ * Obtener estadísticas y estado de la cola
+ */
+export const getQueueStats = async (req, res) => {
+    try {
+        const stats = messageQueue.getStats();
+        const info = messageQueue.getQueueInfo();
+
+        return res.status(200).json({
+            status: true,
+            stats: stats,
+            queueInfo: info
+        });
+
+    } catch (error) {
+        console.error("Error en getQueueStats:", error);
+        return res.status(500).json({
+            status: false,
+            message: error.message
+        });
+    }
+};
+
+/**
+ * Configurar el delay entre mensajes
+ */
+export const setQueueDelay = async (req, res) => {
+    try {
+        const { delay } = req.body;
+
+        if (!delay || delay < 1000) {
+            return res.status(400).json({
+                status: false,
+                message: "El delay debe ser al menos 1000ms (1 segundo)"
+            });
+        }
+
+        messageQueue.setDelay(delay);
+
+        return res.status(200).json({
+            status: true,
+            message: `Delay configurado a ${delay}ms`,
+            config: messageQueue.config
+        });
+
+    } catch (error) {
+        console.error("Error en setQueueDelay:", error);
+        return res.status(500).json({
+            status: false,
+            message: error.message
+        });
+    }
+};
+
+/**
+ * Limpiar la cola de mensajes pendientes
+ */
+export const clearQueue = async (req, res) => {
+    try {
+        const result = messageQueue.clearQueue();
+
+        return res.status(200).json({
+            status: true,
+            message: "Cola limpiada exitosamente",
+            canceled: result.canceled
+        });
+
+    } catch (error) {
+        console.error("Error en clearQueue:", error);
+        return res.status(500).json({
+            status: false,
+            message: error.message
         });
     }
 };

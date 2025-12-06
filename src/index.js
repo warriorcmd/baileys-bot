@@ -4,7 +4,19 @@ import multer from "multer";
 import fileUpload from "express-fileupload";
 import fs from "fs";
 import QRCode from "qrcode";
-import { setSocket, sendNormalMessage, sendMedia, sendToGroup, getChats, showChats, sendFileToChat, sendToChat } from "./controllers/messageController.js";
+import { 
+    setSocket, 
+    sendNormalMessage, 
+    sendMedia, 
+    sendToGroup, 
+    getChats, 
+    showChats, 
+    sendFileToChat, 
+    sendToChat,
+    getQueueStats,
+    setQueueDelay,
+    clearQueue
+} from "./controllers/messageController.js";
 
 const upload = multer({ dest: "uploads/" });
 const app = express();
@@ -695,6 +707,19 @@ app.post("/api/send-file-chat", sendFileToChat);
 
 // Enviar mensaje a chat por nombre
 app.post("/api/send-to-chat", sendToChat);
+
+// ============================================================
+// NUEVAS RUTAS PARA GESTIÓN DE COLA
+// ============================================================
+
+// Obtener estadísticas de la cola
+app.get("/api/queue/stats", getQueueStats);
+
+// Configurar delay entre mensajes (en milisegundos)
+app.post("/api/queue/set-delay", setQueueDelay);
+
+// Limpiar cola de mensajes pendientes
+app.post("/api/queue/clear", clearQueue);
 
 // ============================================================
 // INICIAR SERVIDOR
