@@ -8,7 +8,7 @@ class MessageQueue {
         this.queue = [];
         this.isProcessing = false;
         this.config = {
-            delayBetweenMessages: 3000, // 3 segundos entre mensajes (ajustable)
+            delayBetweenMessages: 5000, // 5 segundos entre mensajes (ajustable)
             maxRetries: 3,
             retryDelay: 5000 // 5 segundos antes de reintentar
         };
