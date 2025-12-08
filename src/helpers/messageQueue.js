@@ -8,7 +8,10 @@ class MessageQueue {
         this.queue = [];
         this.isProcessing = false;
         this.config = {
-            delayBetweenMessages: 6000, // 6 segundos entre mensajes (balance óptimo)
+            minDelay: 8000, // Mínimo 8 segundos entre mensajes
+            maxDelay: 20000, // Máximo 20 segundos entre mensajes
+            randomVariation: true, // Activar variación aleatoria
+            humanPattern: true, // Simular pausas humanas
             maxRetries: 3,
             retryDelay: 3000 // 3 segundos antes de reintentar
         };
@@ -16,16 +19,69 @@ class MessageQueue {
             totalQueued: 0,
             totalSent: 0,
             totalFailed: 0,
-            currentQueueSize: 0
+            currentQueueSize: 0,
+            averageDelay: 0
         };
+        this.lastSendTime = null;
+        this.consecutiveMessages = 0;
     }
 
     /**
      * Configurar delays personalizados
      */
-    setDelay(milliseconds) {
-        this.config.delayBetweenMessages = milliseconds;
-        console.log(`⚙️ Delay entre mensajes configurado a ${milliseconds}ms`);
+    setDelay(minMs, maxMs) {
+        this.config.minDelay = minMs;
+        this.config.maxDelay = maxMs || minMs * 2;
+        console.log(`⚙️ Delay dinámico configurado: ${minMs}ms - ${this.config.maxDelay}ms`);
+    }
+
+    /**
+     * Calcular delay dinámico con patrón humano
+     */
+    calculateDynamicDelay() {
+        const { minDelay, maxDelay, humanPattern } = this.config;
+        
+        // Delay base aleatorio entre min y max
+        let delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+        
+        // Si está activado el patrón humano, añadir variaciones adicionales
+        if (humanPattern) {
+            // Cada 5-7 mensajes, hacer una pausa más larga (simular distracción humana)
+            this.consecutiveMessages++;
+            
+            if (this.consecutiveMessages >= Math.floor(Math.random() * 3) + 5) {
+                const longPause = Math.floor(Math.random() * 15000) + 25000; // 25-40 segundos
+                console.log(`🧑 Pausa humana extendida: ${longPause}ms`);
+                this.consecutiveMessages = 0;
+                return longPause;
+            }
+            
+            // Añadir micro-variaciones (±2 segundos aleatorios)
+            const microVariation = Math.floor(Math.random() * 4000) - 2000;
+            delay += microVariation;
+        }
+        
+        // Asegurar que no sea menor al mínimo
+        delay = Math.max(delay, minDelay);
+        
+        // Actualizar estadística
+        this.updateAverageDelay(delay);
+        
+        return delay;
+    }
+
+    /**
+     * Actualizar promedio de delay para estadísticas
+     */
+    updateAverageDelay(currentDelay) {
+        if (this.stats.totalSent === 0) {
+            this.stats.averageDelay = currentDelay;
+        } else {
+            this.stats.averageDelay = Math.floor(
+                (this.stats.averageDelay * this.stats.totalSent + currentDelay) / 
+                (this.stats.totalSent + 1)
+            );
+        }
     }
 
     /**
@@ -83,10 +139,12 @@ class MessageQueue {
                 
                 console.log(`✅ Mensaje enviado exitosamente (${this.queue.length} restantes en cola)`);
                 
-                // Esperar el delay configurado antes del siguiente mensaje
+                // Calcular delay dinámico antes del siguiente mensaje
                 if (this.queue.length > 0) {
-                    console.log(`⏱️ Esperando ${this.config.delayBetweenMessages}ms antes del siguiente mensaje...`);
-                    await this.sleep(this.config.delayBetweenMessages);
+                    const dynamicDelay = this.calculateDynamicDelay();
+                    console.log(`⏱️ Esperando ${dynamicDelay}ms (${(dynamicDelay/1000).toFixed(1)}s) antes del siguiente mensaje...`);
+                    this.lastSendTime = Date.now();
+                    await this.sleep(dynamicDelay);
                 }
                 
             } catch (error) {
@@ -271,6 +329,10 @@ class MessageQueue {
      * Obtener información de la cola actual
      */
     getQueueInfo() {
+        const avgDelaySeconds = (this.stats.averageDelay / 1000).toFixed(1);
+        const estimatedMinTime = this.queue.length * this.config.minDelay;
+        const estimatedMaxTime = this.queue.length * this.config.maxDelay;
+        
         return {
             queueSize: this.queue.length,
             isProcessing: this.isProcessing,
@@ -280,8 +342,43 @@ class MessageQueue {
                 addedAt: this.queue[0].addedAt,
                 retries: this.queue[0].retries
             } : null,
-            estimatedWaitTime: this.queue.length * this.config.delayBetweenMessages
+            estimatedWaitTime: {
+                min: estimatedMinTime,
+                max: estimatedMaxTime,
+                minFormatted: `${(estimatedMinTime / 1000 / 60).toFixed(1)} minutos`,
+                maxFormatted: `${(estimatedMaxTime / 1000 / 60).toFixed(1)} minutos`
+            },
+            averageDelay: `${avgDelaySeconds}s`,
+            consecutiveMessages: this.consecutiveMessages
         };
+    }
+
+    /**
+     * Configurar patrón humano (activar/desactivar)
+     */
+    setHumanPattern(enabled) {
+        this.config.humanPattern = enabled;
+        console.log(`${enabled ? '✅' : '❌'} Patrón humano ${enabled ? 'activado' : 'desactivado'}`);
+    }
+
+    /**
+     * Configurar rango de delays con presets
+     */
+    setDelayPreset(preset) {
+        const presets = {
+            'rapido': { min: 5000, max: 12000 },      // 5-12s (riesgoso)
+            'moderado': { min: 8000, max: 20000 },    // 8-20s (recomendado)
+            'seguro': { min: 15000, max: 35000 },     // 15-35s (muy seguro)
+            'ultra-seguro': { min: 20000, max: 45000 } // 20-45s (máxima precaución)
+        };
+        
+        if (presets[preset]) {
+            this.config.minDelay = presets[preset].min;
+            this.config.maxDelay = presets[preset].max;
+            console.log(`⚙️ Preset "${preset}" aplicado: ${presets[preset].min}ms - ${presets[preset].max}ms`);
+        } else {
+            console.log(`❌ Preset desconocido. Opciones: ${Object.keys(presets).join(', ')}`);
+        }
     }
 }
 

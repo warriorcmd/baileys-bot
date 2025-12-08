@@ -318,7 +318,7 @@ export const getQueueStats = async (req, res) => {
 };
 
 /**
- * Configurar el delay entre mensajes
+ * Configurar el delay entre mensajes (LEGACY - mantener por compatibilidad)
  */
 export const setQueueDelay = async (req, res) => {
     try {
@@ -331,16 +331,78 @@ export const setQueueDelay = async (req, res) => {
             });
         }
 
-        messageQueue.setDelay(delay);
+        messageQueue.setDelay(delay, delay * 2);
 
         return res.status(200).json({
             status: true,
-            message: `Delay configurado a ${delay}ms`,
+            message: `Delay dinámico configurado: ${delay}ms - ${delay * 2}ms`,
             config: messageQueue.config
         });
 
     } catch (error) {
         console.error("Error en setQueueDelay:", error);
+        return res.status(500).json({
+            status: false,
+            message: error.message
+        });
+    }
+};
+
+/**
+ * Configurar preset de delay dinámico
+ */
+export const setQueuePreset = async (req, res) => {
+    try {
+        const { preset } = req.body;
+
+        if (!preset) {
+            return res.status(400).json({
+                status: false,
+                message: "Debe proporcionar un preset: rapido, moderado, seguro, ultra-seguro"
+            });
+        }
+
+        messageQueue.setDelayPreset(preset);
+
+        return res.status(200).json({
+            status: true,
+            message: `Preset "${preset}" aplicado exitosamente`,
+            config: messageQueue.config
+        });
+
+    } catch (error) {
+        console.error("Error en setQueuePreset:", error);
+        return res.status(500).json({
+            status: false,
+            message: error.message
+        });
+    }
+};
+
+/**
+ * Activar/desactivar patrón humano
+ */
+export const setHumanPattern = async (req, res) => {
+    try {
+        const { enabled } = req.body;
+
+        if (typeof enabled !== 'boolean') {
+            return res.status(400).json({
+                status: false,
+                message: "Debe proporcionar enabled: true o false"
+            });
+        }
+
+        messageQueue.setHumanPattern(enabled);
+
+        return res.status(200).json({
+            status: true,
+            message: `Patrón humano ${enabled ? 'activado' : 'desactivado'}`,
+            config: messageQueue.config
+        });
+
+    } catch (error) {
+        console.error("Error en setHumanPattern:", error);
         return res.status(500).json({
             status: false,
             message: error.message

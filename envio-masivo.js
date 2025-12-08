@@ -26,9 +26,10 @@ El sistema de cola garantiza que los mensajes se envíen de manera segura, uno p
 };
 
 const CONFIGURACION = {
-    delayEntreEnvios: 4000,  // 4 segundos entre mensajes (recomendado)
-    pausaEntreLotes: 60000,  // 1 minuto entre lotes de 20 mensajes
-    tamañoLote: 20           // Enviar en lotes de 20
+    preset: 'seguro',         // 'moderado', 'seguro', 'ultra-seguro'
+    pausaEntreLotes: 120000,  // 2 minutos entre lotes de 15 mensajes
+    tamañoLote: 15,           // Enviar en lotes de 15 (más seguro)
+    patronHumano: true        // Activar pausas aleatorias
 };
 
 // ====================================================
@@ -46,17 +47,27 @@ async function verificarConexion() {
     }
 }
 
-async function configurarDelay(delay) {
+async function configurarDelay(preset, patronHumano) {
     try {
-        const res = await fetch(`${BASE_URL}/api/queue/set-delay`, {
+        // Configurar preset
+        const res1 = await fetch(`${BASE_URL}/api/queue/set-preset`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ delay })
+            body: JSON.stringify({ preset })
         });
-        const data = await res.json();
-        console.log(`✅ ${data.message}`);
+        const data1 = await res1.json();
+        console.log(`✅ ${data1.message}`);
+        
+        // Configurar patrón humano
+        const res2 = await fetch(`${BASE_URL}/api/queue/set-human-pattern`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: patronHumano })
+        });
+        const data2 = await res2.json();
+        console.log(`✅ ${data2.message}`);
     } catch (error) {
-        console.error('❌ Error al configurar delay:', error.message);
+        console.error('❌ Error al configurar delay dinámico:', error.message);
     }
 }
 
@@ -119,19 +130,25 @@ async function envioMasivo() {
     }
     console.log('✅ Bot conectado\n');
 
-    // 2. Configurar delay
-    console.log(`⚙️ Configurando delay a ${CONFIGURACION.delayEntreEnvios}ms...`);
-    await configurarDelay(CONFIGURACION.delayEntreEnvios);
+    // 2. Configurar delay dinámico
+    console.log(`⚙️ Configurando sistema de delay dinámico (Preset: ${CONFIGURACION.preset})...`);
+    await configurarDelay(CONFIGURACION.preset, CONFIGURACION.patronHumano);
     console.log('');
 
     // 3. Mostrar resumen
     console.log('📊 Resumen del envío:');
     console.log(`   Total de contactos: ${CONTACTOS.length}`);
-    console.log(`   Delay entre mensajes: ${CONFIGURACION.delayEntreEnvios}ms`);
+    console.log(`   Modo: Delay DINÁMICO (Anti-detección)`);
+    console.log(`   Preset: ${CONFIGURACION.preset}`);
+    console.log(`   Patrón humano: ${CONFIGURACION.patronHumano ? 'Activado ✅' : 'Desactivado'}`);
     console.log(`   Tamaño de lote: ${CONFIGURACION.tamañoLote}`);
+    console.log(`   Pausa entre lotes: ${CONFIGURACION.pausaEntreLotes / 1000}s`);
     
+    // Tiempo estimado más realista con delays dinámicos
+    const delayPromedio = CONFIGURACION.preset === 'moderado' ? 14 : 
+                         CONFIGURACION.preset === 'seguro' ? 25 : 32;
     const tiempoEstimado = Math.ceil(
-        (CONTACTOS.length * CONFIGURACION.delayEntreEnvios / 1000) + 
+        (CONTACTOS.length * delayPromedio) + 
         (Math.ceil(CONTACTOS.length / CONFIGURACION.tamañoLote) - 1) * (CONFIGURACION.pausaEntreLotes / 1000)
     );
     console.log(`   Tiempo estimado: ~${Math.ceil(tiempoEstimado / 60)} minutos\n`);

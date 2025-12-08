@@ -21,6 +21,8 @@ import {
     sendToChat,
     getQueueStats,
     setQueueDelay,
+    setQueuePreset,
+    setHumanPattern,
     clearQueue
 } from "./controllers/messageController.js";
 
@@ -360,8 +362,14 @@ app.post("/api/send-to-chat", sendToChat);
 // Obtener estadísticas de la cola
 app.get("/api/queue/stats", getQueueStats);
 
-// Configurar delay entre mensajes (en milisegundos)
+// Configurar delay entre mensajes (en milisegundos) - LEGACY
 app.post("/api/queue/set-delay", setQueueDelay);
+
+// Configurar preset de delay dinámico (NUEVO - RECOMENDADO)
+app.post("/api/queue/set-preset", setQueuePreset);
+
+// Activar/desactivar patrón humano (NUEVO)
+app.post("/api/queue/set-human-pattern", setHumanPattern);
 
 // Limpiar cola de mensajes pendientes
 app.post("/api/queue/clear", clearQueue);
